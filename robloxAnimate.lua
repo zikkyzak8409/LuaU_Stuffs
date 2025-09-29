@@ -55,7 +55,7 @@ local function makeNewTrack(
 	return track
 end
 
-function states:StartState(
+function states.StartState(
 	stateName : string,
 	animSpeed : number?,
 	isAction : boolean?
@@ -66,7 +66,7 @@ function states:StartState(
 	if not stateName then warn('states start state invalid statename') return end
 	
 	local targTrack = anims[stateName]
-	if not targTrack then warn('states start state invalid statename - no targ track') return end
+	if not targTrack then warn(`states start state invalid statename - no targ track, {stateName}`) return end
 	
 	activeAnimSpeed = animSpeed or activeAnimSpeed
 	
@@ -98,14 +98,14 @@ function states:StartState(
 	return true
 end
 
-function states:AddState(
+function states.AddState(
 	stateName : string,
 	animId : string,
 	priority : Enum.AnimationPriority?,
 	stateStartFunc : (char: Model) -> () ?,
 	stateEndFunc : (char : Model) -> () ?
 )
-	assert(stateName and animId, `states add state invalid args`)
+	assert(stateName and animId, `states add state invalid args, {stateName}, {animId}`)
 	local targTrack = makeNewTrack(animId, priority)
 	assert(targTrack, `invalid targ track id {animId}`)
 	
@@ -120,7 +120,7 @@ function states:AddState(
 end
 
 --for easy action binding or manual (whatever preferred)
-function states:AddAction(
+function states.AddAction(
 	actionName : string,
 	animId : string,
 	priority : Enum.AnimationPriority,
@@ -139,13 +139,23 @@ function states:AddAction(
 	local cd = false
 	
 	--if auto binding
+	if not keybindParams then
+		anims[actionName] = {
+			Track = targTrack,
+			StartFunc = stateStartFunc,
+			EndFunc = stateEndFunc,
+			Connection = nil
+		}
+		return actionName
+	end
+	
 	for i=1, #keybindParams do
 		actions[`{actionName}{i}`] = contextActionService:BindAction(`{actionName}{i}`, function(inputActionName, inputState, _inputObject)
 			if inputState ~= Enum.UserInputState.Begin then return end
 			if activeAction then return end
 			if cd then return end
 			
-			states:StartState(actionName,animSpeed or 1, true)
+			states.StartState(actionName,animSpeed or 1, true)
 			task.delay(coolDown, function()
 				cd = false
 				activeAction = nil
@@ -165,7 +175,7 @@ function states:AddAction(
 	return actionName
 end
 
-function states:ClearAllActions(
+function states.ClearAllActions(
 	withEndFunc : boolean?
 ) : ()
 	
@@ -189,7 +199,7 @@ function states:ClearAllActions(
 	return true
 end
 
-function states:ClearAllMovementAnims(withEndFunc : boolean?) : ()
+function states.ClearAllMovementAnims(withEndFunc : boolean?) : ()
 	local activeTrack = activeAnim and activeAnim.Track
 
 	if activeTrack then
@@ -205,15 +215,15 @@ function states:ClearAllMovementAnims(withEndFunc : boolean?) : ()
 	return true
 end
 
-function states:ClearAllAnim(withEndFunc : boolean?) : ()
+function states.ClearAllAnim(withEndFunc : boolean?) : ()
 	
-	states:ClearAllActions(withEndFunc)
-	states:ClearAllMovementAnims(withEndFunc)
+	states.ClearAllActions(withEndFunc)
+	states.ClearAllMovementAnims(withEndFunc)
 	
 	return true
 end
 
-function states:HaltAllAnim(withEndFunc : boolean) : ()
+function states.HaltAllAnim(withEndFunc : boolean) : ()
 	activeAction = false
 	local activeTrack = activeAnim and activeAnim.Track
 	
@@ -229,9 +239,9 @@ function states:HaltAllAnim(withEndFunc : boolean) : ()
 	return true
 end
 
-function states:LockAllAnim(haltAll : boolean?, haltWithEndFunc : boolean?) : ()
+function states.LockAllAnim(haltAll : boolean?, haltWithEndFunc : boolean?) : ()
 	feedLock = true
-	if haltAll then states:HaltAllAnim(haltWithEndFunc) end
+	if haltAll then states.HaltAllAnim(haltWithEndFunc) end
 end
 
 return states
