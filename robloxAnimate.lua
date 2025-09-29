@@ -4,7 +4,15 @@
 --Service segment
 local runService = game:GetService('RunService')
 local contextActionService = game:GetService('ContextActionService')
-local abstract = require(script.Parent:WaitForChild('abstraction'))
+local playerService = game:GetService('Players')
+
+local abstract = {} --> abstraction for easy access
+
+abstract.player = playerService.LocalPlayer
+abstract.char = abstract.player.Character or abstract.player.CharacterAdded:Wait()
+abstract.humanoid = abstract.char:WaitForChild('Humanoid') :: Humanoid
+abstract.hrp = abstract.char:WaitForChild('HumanoidRootPart') :: BasePart
+abstract.animator = abstract.humanoid:WaitForChild('Animator') :: Animator
 
 --main vars
 local states = {}
