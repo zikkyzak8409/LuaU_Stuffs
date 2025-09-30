@@ -6,7 +6,7 @@ local runService = game:GetService('RunService')
 local contextActionService = game:GetService('ContextActionService')
 local playerService = game:GetService('Players')
 
-local abstract = {} --> abstraction for easy access
+local abstract = {} --> abstraction for easy access // can be used to rewrite heirarchy for custom rigs / use animation controller
 
 abstract.player = playerService.LocalPlayer
 abstract.char = abstract.player.Character or abstract.player.CharacterAdded:Wait()
@@ -26,6 +26,27 @@ local anims = {}
 local registeredIds = {}
 local actions = {}
 
+--to lock any anims from being input (a full animation lock)
+function states.LockAllAnim(
+	haltAll : boolean?,
+	haltWithEndFunc : boolean?,
+	fadeOutTime : number?
+) : ()
+
+	feedLock = true
+	if haltAll then states.HaltAllAnim(haltWithEndFunc, fadeOutTime) end
+
+	return
+end
+
+--to unlock anim input procedure
+function states.UnlockAllAnim() : ()
+	
+	feedLock = nil
+	return
+end
+
+--new track making -> make new track if it does not exist / return existing track
 local function makeNewTrack(
 	animId : string,
 	priorityLevel : Enum.AnimationPriority?
@@ -33,7 +54,7 @@ local function makeNewTrack(
 	
 	local track = registeredIds[animId]
 	
-	if track then
+	if track then --overwrite priority if track already exists
 		track = priorityLevel or Enum.AnimationPriority.Action
 		return track
 	end
@@ -55,17 +76,21 @@ local function makeNewTrack(
 	return track
 end
 
+--start state (main function)
 function states.StartState(
 	stateName : string,
 	animSpeed : number?,
+	fadeOutTime : number?,
 	isAction : boolean?
 ) : ()
+	
 	if feedLock then return end
 	if activeAction then return end
 	if isAction then activeAction = true end
 	if not stateName then warn('states start state invalid statename') return end
 	
 	local targTrack = anims[stateName]
+	
 	if not targTrack then warn(`states start state invalid statename - no targ track, {stateName}`) return end
 	
 	activeAnimSpeed = animSpeed or activeAnimSpeed
@@ -75,7 +100,9 @@ function states.StartState(
 	
 	if activeTrack then
 		
-		activeTrack:Stop(.05)
+		states.LockAllAnim(false,false,nil) --lock all anim for transitioning
+		
+		activeTrack:Stop(fadeOutTime or .05)
 		activeAnimSpeed = 1
 		if activeAnim.Connection then activeAnim.Connection:Disconnect() end
 		
@@ -86,7 +113,7 @@ function states.StartState(
 	local newTrack : AnimationTrack? = targTrack.Track
 	local startFunc : (char : Model) -> () ? = targTrack.StartFunc
 	
-	newTrack:Play()
+	newTrack:Play(fadeOutTime or .05)
 	targTrack.Connection = runService.Heartbeat:Connect(function()
 		newTrack:AdjustSpeed(activeAnimSpeed)
 	end)
@@ -95,9 +122,13 @@ function states.StartState(
 	
 	activeAnim = targTrack
 	
+	--delay input of next anim until this one is done
+	task.delay(fadeOutTime or .05, states.UnlockAllAnim)
+	
 	return true
 end
 
+--append an animation state -> has function hooks for start/end of anims
 function states.AddState(
 	stateName : string,
 	animId : string,
@@ -105,6 +136,7 @@ function states.AddState(
 	stateStartFunc : (char: Model) -> () ?,
 	stateEndFunc : (char : Model) -> () ?
 )
+	
 	assert(stateName and animId, `states add state invalid args, {stateName}, {animId}`)
 	local targTrack = makeNewTrack(animId, priority)
 	assert(targTrack, `invalid targ track id {animId}`)
@@ -119,7 +151,7 @@ function states.AddState(
 	return targTrack.Ended
 end
 
---for easy action binding or manual (whatever preferred)
+--for easy action binding or manual (whatever preferred) -> has start/end hooks (could be used for remote event transmission)
 function states.AddAction(
 	actionName : string,
 	animId : string,
@@ -128,7 +160,8 @@ function states.AddAction(
 	keybindParams : {Enum.KeyCode | Enum.UserInputType | Enum.UserInputState}?,
 	animSpeed : number?,
 	stateStartFunc : (char: Model) -> () ?,
-	stateEndFunc : (char : Model) -> () ?
+	stateEndFunc : (char : Model) -> () ?,
+	fadeOutTime : number?
 )
 	
 	if not actionName then warn('states add action no action name') return end
@@ -138,24 +171,28 @@ function states.AddAction(
 	
 	local cd = false
 	
-	--if auto binding
+	--if not auto binding
 	if not keybindParams then
 		anims[actionName] = {
+			
+			IsAction = true, --> to separate actions/movement anims
 			Track = targTrack,
 			StartFunc = stateStartFunc,
 			EndFunc = stateEndFunc,
 			Connection = nil
+			
 		}
 		return actionName
 	end
 	
+	--if auto binding -> uses contextactionservice
 	for i=1, #keybindParams do
 		actions[`{actionName}{i}`] = contextActionService:BindAction(`{actionName}{i}`, function(inputActionName, inputState, _inputObject)
 			if inputState ~= Enum.UserInputState.Begin then return end
 			if activeAction then return end
 			if cd then return end
 			
-			states.StartState(actionName,animSpeed or 1, true)
+			states.StartState(actionName,animSpeed or 1,fadeOutTime or .05, true)
 			task.delay(coolDown, function()
 				cd = false
 				activeAction = nil
@@ -166,6 +203,8 @@ function states.AddAction(
 	end
 	
 	anims[actionName] = {
+		
+		IsAction = true,
 		Track = targTrack,
 		StartFunc = stateStartFunc,
 		EndFunc = stateEndFunc,
@@ -175,14 +214,16 @@ function states.AddAction(
 	return actionName
 end
 
+--for easy action unbinding
 function states.ClearAllActions(
-	withEndFunc : boolean?
+	withEndFunc : boolean?,
+	fadeOutTime : number?
 ) : ()
 	
 	local activeAction = activeAction and activeAction.Track
 	
 	if activeAction then
-		activeAction:Stop(.05)
+		activeAction:Stop(fadeOutTime or .05)
 
 		if withEndFunc then
 			local endFunc : (char : Model) -> () ? = activeAction.EndFunc
@@ -194,41 +235,67 @@ function states.ClearAllActions(
 	for _, binding in actions do
 		contextActionService:UnbindAction(binding)
 	end
+	
+	--remove actions from anims table
+	for index, animTable in anims do
+		if animTable.IsAction == nil then continue end
+		
+		anims[index] = nil
+	end
 
 	actions = {}
 	return true
 end
 
-function states.ClearAllMovementAnims(withEndFunc : boolean?) : ()
+--for removing movement anims
+function states.ClearAllMovementAnims(
+	withEndFunc : boolean?,
+	fadeOutTime : number?
+) : ()
+	
 	local activeTrack = activeAnim and activeAnim.Track
 
 	if activeTrack then
-		activeTrack:Stop(.05)
+		activeTrack:Stop(fadeOutTime or .05)
 
 		if withEndFunc then
 			local endFunc : (char : Model) -> () ? = activeAnim.EndFunc
 			if endFunc then endFunc(abstract.char) end
 		end
 	end
-
-	anims = {}
-	return true
-end
-
-function states.ClearAllAnim(withEndFunc : boolean?) : ()
 	
-	states.ClearAllActions(withEndFunc)
-	states.ClearAllMovementAnims(withEndFunc)
+	for _, v in anims do
+		if v.IsAction then continue end
+		
+		anims[v.Name] = nil
+	end
 	
 	return true
 end
 
-function states.HaltAllAnim(withEndFunc : boolean) : ()
+--convenient for full removal of anims
+function states.ClearAllAnim(
+	withEndFunc : boolean?,
+	fadeOutTime : number?
+) : ()
+	
+	states.ClearAllActions(withEndFunc, fadeOutTime)
+	states.ClearAllMovementAnims(withEndFunc, fadeOutTime)
+	
+	return true
+end
+
+--force stop all anims, useful when loading in a new anim / applying an external anim
+function states.HaltAllAnim(
+	withEndFunc : boolean,
+	fadeOutTime : number?
+) : ()
+	
 	activeAction = false
 	local activeTrack = activeAnim and activeAnim.Track
 	
 	if activeTrack then
-		activeTrack:Stop(.05)
+		activeTrack:Stop(fadeOutTime or .05)
 
 		if withEndFunc then
 			local endFunc : (char : Model) -> () ? = activeAnim.EndFunc
@@ -237,11 +304,6 @@ function states.HaltAllAnim(withEndFunc : boolean) : ()
 	end
 	
 	return true
-end
-
-function states.LockAllAnim(haltAll : boolean?, haltWithEndFunc : boolean?) : ()
-	feedLock = true
-	if haltAll then states.HaltAllAnim(haltWithEndFunc) end
 end
 
 return states
