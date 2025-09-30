@@ -26,7 +26,10 @@ local anims = {}
 local registeredIds = {}
 local actions = {}
 
---to lock any anims from being input (a full animation lock)
+--[[
+to lock any anims from being input (a full animation lock)
+returns none
+]]
 function states.LockAllAnim(
 	haltAll : boolean?,
 	haltWithEndFunc : boolean?,
@@ -39,14 +42,20 @@ function states.LockAllAnim(
 	return
 end
 
---to unlock anim input procedure
+--[[
+to unlock anim input procedure
+returns none
+]]
 function states.UnlockAllAnim() : ()
 	
 	feedLock = nil
 	return
 end
 
---new track making -> make new track if it does not exist / return existing track
+--[[
+new track making -> make new track if it does not exist / return existing track
+returns animation track
+]]
 local function makeNewTrack(
 	animId : string,
 	priorityLevel : Enum.AnimationPriority?
@@ -59,6 +68,7 @@ local function makeNewTrack(
 		return track
 	end
 	
+	--protects from any causes of error
 	xpcall(function()
 		
 		local animation = Instance.new('Animation')
@@ -76,7 +86,10 @@ local function makeNewTrack(
 	return track
 end
 
---start state (main function)
+--[[
+start state (main function)
+returns true=success, false/nil=fail
+]]
 function states.StartState(
 	stateName : string,
 	animSpeed : number?,
@@ -128,14 +141,17 @@ function states.StartState(
 	return true
 end
 
---append an animation state -> has function hooks for start/end of anims
+--[[
+append an animation state -> has function hooks for start/end of anims
+returns animation track
+]]
 function states.AddState(
 	stateName : string,
 	animId : string,
 	priority : Enum.AnimationPriority?,
 	stateStartFunc : (char: Model) -> () ?,
 	stateEndFunc : (char : Model) -> () ?
-)
+) : AnimationTrack?
 	
 	assert(stateName and animId, `states add state invalid args, {stateName}, {animId}`)
 	local targTrack = makeNewTrack(animId, priority)
@@ -148,10 +164,13 @@ function states.AddState(
 		Connection = nil
 	}
 	
-	return targTrack.Ended
+	return targTrack --maybe useful return?
 end
 
---for easy action binding or manual (whatever preferred) -> has start/end hooks (could be used for remote event transmission)
+--[[
+for easy action binding or manual (whatever preferred) -> has start/end hooks (could be used for remote event transmission)
+returns actionName
+]]
 function states.AddAction(
 	actionName : string,
 	animId : string,
@@ -162,7 +181,7 @@ function states.AddAction(
 	stateStartFunc : (char: Model) -> () ?,
 	stateEndFunc : (char : Model) -> () ?,
 	fadeOutTime : number?
-)
+) : string? --> return action name
 	
 	if not actionName then warn('states add action no action name') return end
 	local targTrack = makeNewTrack(animId, priority) --this overwrites priority, maybe decouple later
