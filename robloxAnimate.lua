@@ -64,7 +64,7 @@ local function makeNewTrack(
 	local track = registeredIds[animId]
 	
 	if track then --overwrite priority if track already exists
-		track = priorityLevel or Enum.AnimationPriority.Action
+		track.Priority = priorityLevel or Enum.AnimationPriority.Action
 		return track
 	end
 	
@@ -283,10 +283,10 @@ function states.ClearAllMovementAnims(
 		end
 	end
 	
-	for _, v in anims do
+	for index, v in anims do
 		if v.IsAction then continue end
 		
-		anims[v.Name] = nil
+		anims[index] = nil
 	end
 	
 	return true
