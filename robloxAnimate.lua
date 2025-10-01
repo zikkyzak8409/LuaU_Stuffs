@@ -1,3 +1,11 @@
+--[[
+
+the purpose of this module is to allow easy usage of custom animation packs
+it allows fluid transitions of animations, speed and supports actions/action animations
+
+
+]]
+
 --Types segment
 
 
@@ -97,13 +105,12 @@ function states.StartState(
 	isAction : boolean?
 ) : ()
 	
-	if feedLock then return end
-	if activeAction then return end
+	if feedLock or activeAction then return end
 	if isAction then activeAction = true end
 	if not stateName then warn('states start state invalid statename') return end
 	
 	local targTrack = anims[stateName]
-	
+
 	if not targTrack then warn(`states start state invalid statename - no targ track, {stateName}`) return end
 	
 	activeAnimSpeed = animSpeed or activeAnimSpeed
@@ -137,6 +144,27 @@ function states.StartState(
 	
 	--delay input of next anim until this one is done
 	task.delay(fadeOutTime or .05, states.UnlockAllAnim)
+	
+	return true
+end
+
+function states.StartAction(
+	stateName : string,
+	animSpeed : number?,
+	fadeOutTime : number?
+): ()
+	
+	if feedLock or activeAction then return end
+	activeAction = true
+	
+	local targTrack = anims[stateName]
+	if not targTrack then warn(`states start state invalid statename - no targ track, {stateName}`) return end
+	
+	local newTrack = targTrack.Track
+	
+	newTrack:AdjustSpeed(animSpeed)
+	
+	newTrack:Play(fadeOutTime)
 	
 	return true
 end
@@ -180,7 +208,8 @@ function states.AddAction(
 	animSpeed : number?,
 	stateStartFunc : (char: Model) -> () ?,
 	stateEndFunc : (char : Model) -> () ?,
-	fadeOutTime : number?
+	fadeOutTime : number?,
+	actionEvents : {[string] : () -> ()} ?
 ) : string? --> return action name
 	
 	if not actionName then warn('states add action no action name') return end
@@ -206,18 +235,35 @@ function states.AddAction(
 	
 	--if auto binding -> uses contextactionservice
 	for i=1, #keybindParams do
-		actions[`{actionName}{i}`] = contextActionService:BindAction(`{actionName}{i}`, function(inputActionName, inputState, _inputObject)
+		actions[`{actionName}{i}`] = true
+		
+		contextActionService:BindAction(`{actionName}{i}`, function(inputActionName, inputState, _inputObject)
 			if inputState ~= Enum.UserInputState.Begin then return end
 			if activeAction then return end
 			if cd then return end
 			
-			states.StartState(actionName,animSpeed or 1,fadeOutTime or .05, true)
+			if not states.StartAction(actionName,animSpeed or 1,fadeOutTime or .05) then return end
+			cd = true
+			
+			--[[
+			im lazy and dont wanna do cleanup laterer,
+			bit risky doing events after startstate so fix laterer.
+			reason: if state startstarts first then marker may not be added in time
+			-> edgecase
+			]]
+			
+			if actionEvents ~= nil then
+				for name, callFunc in actionEvents do
+					targTrack:GetMarkerReachedSignal(name):Once(callFunc)
+					print('connect')
+				end
+			end
+			
 			task.delay(coolDown, function()
 				cd = false
 				activeAction = nil
 			end)
 			
-			cd = true
 		end, false, keybindParams[i])
 	end
 	
@@ -251,8 +297,8 @@ function states.ClearAllActions(
 	end
 	
 	--unbind auto bound actions
-	for _, binding in actions do
-		contextActionService:UnbindAction(binding)
+	for index, binding in actions do
+		contextActionService:UnbindAction(index)
 	end
 	
 	--remove actions from anims table
